@@ -75,7 +75,7 @@ void update_keyboard_report(bool button_states[11])
 {
     // Clear all keys first
     memset(keyboard_report.keycode, 0, sizeof(keyboard_report.keycode));
-    
+
     // Add pressed keys to the report (up to 6 keys)
     uint8_t key_count = 0;
     for (int i = 0; i < 11 && key_count < 6; i++)
