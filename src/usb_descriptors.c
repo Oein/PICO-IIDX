@@ -1,5 +1,7 @@
 #include "tusb.h"
 #include "usb_descriptors.h"
+#include "class/hid/hid.h"
+#include "device/usbd.h"
 
 //--------------------------------------------------------------------+
 // Device Descriptors
