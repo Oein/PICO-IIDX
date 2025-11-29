@@ -21,6 +21,26 @@
 void hid_task(void);
 
 hid_iidxpad_report_t gamepad_report = {0};
+hid_keyboard_report_t keyboard_report = {0};
+
+// Key mapping for IIDX buttons (USB HID keycodes)
+#define KEY_A 0x04
+#define KEY_S 0x16
+#define KEY_D 0x07
+#define KEY_F 0x09
+#define KEY_G 0x0A
+#define KEY_H 0x0B
+#define KEY_J 0x0D
+#define KEY_K 0x0E
+#define KEY_L 0x0F
+#define KEY_Z 0x1D
+#define KEY_X 0x1B
+
+// Key mapping array for buttons 0-10
+// Button 0 -> A, Button 1 -> S, Button 2 -> D, Button 3 -> F, Button 4 -> G,
+// Button 5 -> H, Button 6 -> J, Button 7 -> K, Button 8 -> L, Button 9 -> Z, Button 10 -> X
+const uint8_t button_keys[11] = {
+    KEY_A, KEY_S, KEY_D, KEY_F, KEY_G, KEY_H, KEY_J, KEY_K, KEY_L, KEY_Z, KEY_X};
 
 #define BUTTON0_PIN 0
 #define BUTTON1_PIN 1
@@ -39,6 +59,8 @@ hid_iidxpad_report_t gamepad_report = {0};
     gpio_set_dir(pin, GPIO_IN); \
     gpio_pull_up(pin);
 
+bool mode = false; // false: gamepad mode, true: keyboard mode
+
 int changeRange(int reqMin, int reqMax, int inMin, int inMax, int value)
 {
     if (value < inMin)
@@ -47,6 +69,37 @@ int changeRange(int reqMin, int reqMax, int inMin, int inMax, int value)
         value = inMax;
     return (reqMax - reqMin) * (value - inMin) / (inMax - inMin) + reqMin;
 }
+
+// 6-Key Rollover implementation
+void update_keyboard_report(bool button_states[11])
+{
+    // Clear all keys first
+    memset(keyboard_report.keycode, 0, sizeof(keyboard_report.keycode));
+    
+    // Add pressed keys to the report (up to 6 keys)
+    uint8_t key_count = 0;
+    for (int i = 0; i < 11 && key_count < 6; i++)
+    {
+        if (button_states[i])
+        {
+            keyboard_report.keycode[key_count] = button_keys[i];
+            key_count++;
+        }
+    }
+}
+
+void send_keyboard_report(void)
+{
+    if (tud_hid_n_ready(ITF_NUM_KEYBOARD))
+    {
+        // Always send the current keyboard report state
+        // In keyboard mode, it contains the pressed keys
+        // In gamepad mode, it should be empty (keys cleared in main loop)
+        tud_hid_n_report(ITF_NUM_KEYBOARD, 0, &keyboard_report, sizeof(keyboard_report));
+    }
+}
+
+bool mode_key_pressed = false;
 
 int main()
 {
@@ -88,19 +141,55 @@ int main()
         gamepad_report.x = (uint8_t)mapped_value;
 
         // read buttons
+        bool gpioRead[] = {
+            gpio_get(BUTTON0_PIN) == 0,
+            gpio_get(BUTTON1_PIN) == 0,
+            gpio_get(BUTTON2_PIN) == 0,
+            gpio_get(BUTTON3_PIN) == 0,
+            gpio_get(BUTTON4_PIN) == 0,
+            gpio_get(BUTTON5_PIN) == 0,
+            gpio_get(BUTTON6_PIN) == 0,
+            gpio_get(BUTTON7_PIN) == 0,
+            gpio_get(BUTTON8_PIN) == 0,
+            gpio_get(BUTTON9_PIN) == 0,
+            gpio_get(BUTTON10_PIN) == 0};
+
         gamepad_report.buttons[0] = 0;
         gamepad_report.buttons[1] = 0;
-        gamepad_report.buttons[0] |= (gpio_get(BUTTON0_PIN) == 0) ? (1 << 0) : 0;
-        gamepad_report.buttons[0] |= (gpio_get(BUTTON1_PIN) == 0) ? (1 << 1) : 0;
-        gamepad_report.buttons[0] |= (gpio_get(BUTTON2_PIN) == 0) ? (1 << 2) : 0;
-        gamepad_report.buttons[0] |= (gpio_get(BUTTON3_PIN) == 0) ? (1 << 3) : 0;
-        gamepad_report.buttons[0] |= (gpio_get(BUTTON4_PIN) == 0) ? (1 << 4) : 0;
-        gamepad_report.buttons[0] |= (gpio_get(BUTTON5_PIN) == 0) ? (1 << 5) : 0;
-        gamepad_report.buttons[0] |= (gpio_get(BUTTON6_PIN) == 0) ? (1 << 6) : 0;
-        gamepad_report.buttons[0] |= (gpio_get(BUTTON7_PIN) == 0) ? (1 << 7) : 0;
-        gamepad_report.buttons[1] |= (gpio_get(BUTTON8_PIN) == 0) ? (1 << 0) : 0;
-        gamepad_report.buttons[1] |= (gpio_get(BUTTON9_PIN) == 0) ? (1 << 1) : 0;
-        gamepad_report.buttons[1] |= (gpio_get(BUTTON10_PIN) == 0) ? (1 << 2) : 0;
+        gamepad_report.buttons[0] |= (gpioRead[0]) ? (1 << 0) : 0;
+        gamepad_report.buttons[0] |= (gpioRead[1]) ? (1 << 1) : 0;
+        gamepad_report.buttons[0] |= (gpioRead[2]) ? (1 << 2) : 0;
+        gamepad_report.buttons[0] |= (gpioRead[3]) ? (1 << 3) : 0;
+        gamepad_report.buttons[0] |= (gpioRead[4]) ? (1 << 4) : 0;
+        gamepad_report.buttons[0] |= (gpioRead[5]) ? (1 << 5) : 0;
+        gamepad_report.buttons[0] |= (gpioRead[6]) ? (1 << 6) : 0;
+        gamepad_report.buttons[0] |= (gpioRead[7]) ? (1 << 7) : 0;
+        gamepad_report.buttons[1] |= (gpioRead[8]) ? (1 << 0) : 0;
+        gamepad_report.buttons[1] |= (gpioRead[9]) ? (1 << 1) : 0;
+        gamepad_report.buttons[1] |= (gpioRead[10]) ? (1 << 2) : 0;
+
+        // Update keyboard report based on current mode
+        if (mode) // keyboard mode
+        {
+            update_keyboard_report(gpioRead);
+        }
+        else // gamepad mode - clear keyboard
+        {
+            memset(keyboard_report.keycode, 0, sizeof(keyboard_report.keycode));
+        }
+
+        // BUTTON0, BUTTON3, BUTTON5 to switch mode
+        bool current_mode_key = gpioRead[0] && gpioRead[3] && gpioRead[5];  // gamepad mode
+        bool current_mode_key2 = gpioRead[0] && gpioRead[3] && gpioRead[7]; // keyboard mode
+        if ((current_mode_key || current_mode_key2) && !mode_key_pressed)
+        {
+            mode = current_mode_key ? false : true;
+            mode_key_pressed = true;
+        }
+        else if (!current_mode_key && !current_mode_key2)
+        {
+            mode_key_pressed = false;
+        }
 
         sleep_ms(1);
     }
@@ -131,16 +220,22 @@ void tud_resume_cb(void)
 // HID Task
 // ========================
 
-void send_hid_report(void)
+void send_gamepad_report(void)
 {
     // skip if hid is not ready
-    if (!tud_hid_n_ready(ITF_NUM_GAMEPAD))
+    if (tud_hid_n_ready(ITF_NUM_GAMEPAD))
     {
-        return;
+        if (!mode)
+        {
+            tud_hid_n_report(ITF_NUM_GAMEPAD, 0, &gamepad_report, sizeof(gamepad_report));
+        }
+        else
+        {
+            // In keyboard mode, send empty gamepad report
+            hid_iidxpad_report_t empty_report = {0};
+            tud_hid_n_report(ITF_NUM_GAMEPAD, 0, &empty_report, sizeof(empty_report));
+        }
     }
-
-    // Send the report (no report ID in descriptor, so use 0)
-    tud_hid_n_report(ITF_NUM_GAMEPAD, 0, &gamepad_report, sizeof(gamepad_report));
 }
 
 void hid_task(void)
@@ -154,11 +249,8 @@ void hid_task(void)
         return;
     start_ms = now;
 
-    // Send report if ready
-    if (tud_hid_n_ready(ITF_NUM_GAMEPAD))
-    {
-        send_hid_report();
-    }
+    send_gamepad_report();
+    send_keyboard_report();
 }
 
 void tud_hid_report_complete_cb(uint8_t instance, uint8_t const *report, uint16_t len)
@@ -166,7 +258,7 @@ void tud_hid_report_complete_cb(uint8_t instance, uint8_t const *report, uint16_
     (void)len;
     (void)report;
     (void)instance;
-    // Don't send from callback, let hid_task() handle periodic sending
+    // Don't send from callback, let hid_task() and keyboard_task() handle periodic sending
 }
 
 uint16_t tud_hid_get_report_cb(uint8_t instance, uint8_t report_id, hid_report_type_t report_type, uint8_t *buffer, uint16_t reqlen)
