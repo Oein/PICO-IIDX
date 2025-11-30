@@ -110,8 +110,12 @@ uint8_t const *tud_descriptor_device_cb(void)
 #define EPNUM_GAMEPAD 0x81
 #define EPNUM_KEYBOARD 0x82
 
+#define EPNUM_CDC_NOTIF 0x83
+#define EPNUM_CDC_OUT 0x04
+#define EPNUM_CDC_IN 0x84
+
 // HID only configuration descriptor
-#define CONFIG_TOTAL_LEN (TUD_CONFIG_DESC_LEN + TUD_HID_DESC_LEN + TUD_HID_DESC_LEN)
+#define CONFIG_TOTAL_LEN (TUD_CONFIG_DESC_LEN + TUD_HID_DESC_LEN + TUD_HID_DESC_LEN + TUD_CDC_DESC_LEN)
 uint8_t const desc_configuration[] =
     {
         // Configuration number, interface count, string index, total length, attribute, power in mA
@@ -119,6 +123,7 @@ uint8_t const desc_configuration[] =
 
         TUD_HID_DESCRIPTOR(ITF_NUM_GAMEPAD, 0, HID_ITF_PROTOCOL_NONE, sizeof(desc_hid_report_gamepad), EPNUM_GAMEPAD, CFG_TUD_HID_EP_BUFSIZE, 10),
         TUD_HID_DESCRIPTOR(ITF_NUM_KEYBOARD, 0, HID_ITF_PROTOCOL_KEYBOARD, sizeof(desc_hid_report_keyboard), EPNUM_KEYBOARD, CFG_TUD_HID_EP_BUFSIZE, 10),
+        TUD_CDC_DESCRIPTOR(ITF_NUM_CDC, 4, EPNUM_CDC_NOTIF, 8, EPNUM_CDC_OUT, EPNUM_CDC_IN, 64),
 };
 
 // Invoked when received GET CONFIGURATION DESCRIPTOR
@@ -138,6 +143,8 @@ uint8_t const *tud_hid_descriptor_report_cb(uint8_t instance)
     return desc_hid_report_gamepad;
   case ITF_NUM_KEYBOARD:
     return desc_hid_report_keyboard;
+  // case ITF_NUM_CDC:
+  //   return NULL;
   default:
     return NULL;
   }
@@ -154,6 +161,7 @@ char const *string_desc_arr[] =
         "OeinIndustry",             // 1: Manufacturer
         "IIDX Controller",          // 2: Product
         "IIDX-0001",                // 3: Serials
+        "CDC",
 };
 
 static uint16_t _desc_str[32];

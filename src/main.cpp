@@ -103,14 +103,28 @@ void send_keyboard_report(void)
 
 bool mode_key_pressed = false;
 
+void write_response(const char *response)
+{
+    // // split by 64 bytes
+    size_t len = strlen(response);
+    size_t offset = 0;
+    while (offset < len)
+    {
+        size_t chunk_size = (len - offset > 64) ? 64 : (len - offset);
+        tud_cdc_write(response + offset, chunk_size);
+        tud_cdc_write_flush();
+        offset += chunk_size;
+    }
+}
+
 int main()
 {
     board_init();
     tusb_init();
     adc_init();
 
-    adc_gpio_init(29);   // Initialize GPIO 29 for ADC
-    adc_select_input(3); // Select ADC input 3 (GPIO 29)
+    adc_gpio_init(26);   // Initialize GPIO 26 for ADC
+    adc_select_input(0); // Select ADC input 0 (GPIO 26)
 
     // Initialize button pins
     setup_input_pin(BUTTON0_PIN);
@@ -127,10 +141,12 @@ int main()
 
     srand(time(NULL));
 
-    int setted_min = 115;
-    int setted_max = 980;
+    int setted_min = 4096;
+    int setted_max = 0;
     int res_min = 0;
     int res_max = 255;
+
+    const int DEADZONE = 4;
 
     while (1)
     {
@@ -139,8 +155,74 @@ int main()
 
         // Read ADC and update gamepad X axis
         int read = adc_read();
+        if (read < setted_min)
+            setted_min = read;
+        if (read > setted_max)
+            setted_max = read;
         int mapped_value = changeRange(res_min, res_max, setted_min, setted_max, read);
+        static int prev_mapped_value = -1;
+
+        if (prev_mapped_value == -1)
+            prev_mapped_value = mapped_value;
+        else
+        {
+            bool isLarge2MinTurnPoint = prev_mapped_value > 255 - DEADZONE && mapped_value < DEADZONE;
+            bool isMin2LargeTurnPoint = prev_mapped_value < DEADZONE && mapped_value > 255 - DEADZONE;
+            static int last_setted_min = read;
+            static int last_setted_max = read;
+            if (isLarge2MinTurnPoint || isMin2LargeTurnPoint)
+            {
+                if (isLarge2MinTurnPoint)
+                {
+                    // 0 값으로 돌아올때 그떄의 최소값을 기준으로 천천히 맞춤
+                    setted_min = (last_setted_min * 9 + read) / 10;
+                }
+                else
+                {
+                    // 255 값으로 돌아올때 그떄의 최대값을 기준으로 천천히 맞춤
+                    setted_max = (last_setted_max * 9 + read) / 10;
+                }
+            }
+            last_setted_min = setted_min;
+            last_setted_max = setted_max;
+
+            if (abs(prev_mapped_value - mapped_value) < DEADZONE)
+                mapped_value = prev_mapped_value;
+            else
+                prev_mapped_value = mapped_value;
+        }
+
         gamepad_report.x = (uint8_t)mapped_value;
+
+        // write_response("ADC Read: ");
+        // char buffer[16];
+        // snprintf(buffer, sizeof(buffer), "%d", read);
+        // write_response(buffer);
+        // write_response("\r\n");
+
+        static int report_counter = 0;
+        report_counter++;
+        if (report_counter >= 100)
+        {
+            report_counter = 0;
+            write_response("ADC Min: ");
+            char buffer_min[16];
+            snprintf(buffer_min, sizeof(buffer_min), "%d", setted_min);
+            write_response(buffer_min);
+            write_response(" Max: ");
+            char buffer_max[16];
+            snprintf(buffer_max, sizeof(buffer_max), "%d", setted_max);
+            write_response(buffer_max);
+            write_response(" ADC Read: ");
+            char buffer_read[16];
+            snprintf(buffer_read, sizeof(buffer_read), "%d", read);
+            write_response(buffer_read);
+            write_response(" Mapped: ");
+            char buffer_mapped[16];
+            snprintf(buffer_mapped, sizeof(buffer_mapped), "%d", mapped_value);
+            write_response(buffer_mapped);
+            write_response("\r\n");
+        }
 
         // read buttons
         bool gpioRead[] = {
@@ -181,11 +263,21 @@ int main()
         }
 
         // BUTTON0, BUTTON3, BUTTON5 to switch mode
-        bool current_mode_key = gpioRead[0] && gpioRead[3] && gpioRead[5];  // gamepad mode
-        bool current_mode_key2 = gpioRead[0] && gpioRead[3] && gpioRead[7]; // keyboard mode
-        if ((current_mode_key || current_mode_key2) && !mode_key_pressed)
+        bool current_mode_key = gpioRead[7] && gpioRead[10] && gpioRead[1];  // gamepad mode
+        bool current_mode_key2 = gpioRead[7] && gpioRead[10] && gpioRead[3]; // keyboard mode
+        bool current_mode_key3 = gpioRead[0] && gpioRead[3] && gpioRead[5];  // calibrate mode
+        if ((current_mode_key || current_mode_key2 || current_mode_key3) && !mode_key_pressed)
         {
-            mode = current_mode_key ? false : true;
+            if (current_mode_key || current_mode_key2)
+            {
+                mode = current_mode_key ? false : true;
+            }
+            else
+            {
+                setted_max = read;
+                setted_min = read;
+            }
+
             mode_key_pressed = true;
         }
         else if (!current_mode_key && !current_mode_key2)
@@ -282,3 +374,17 @@ void tud_hid_set_report_cb(uint8_t instance, uint8_t report_id, hid_report_type_
     (void)buffer;
     (void)bufsize;
 }
+
+// CDC Callbacks
+
+// void tud_cdc_line_state_cb(uint8_t instance, bool dtr, bool rts)
+// {
+//     (void)instance;
+//     (void)dtr;
+//     (void)rts;
+// }
+
+// void tud_cdc_rx_cb(uint8_t instance)
+// {
+//     (void)instance;
+// }
