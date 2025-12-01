@@ -73,9 +73,16 @@ extern "C"
 #define CFG_TUD_ENDPOINT0_SIZE 64
 #endif
 
+#define ENABLE_CDC
+#undef ENABLE_CDC
+
 //------------- CLASS -------------//
 #define CFG_TUD_HID 2
+#ifdef ENABLE_CDC
 #define CFG_TUD_CDC 1
+#else
+#define CFG_TUD_CDC 0
+#endif
 #define CFG_TUD_MSC 0
 #define CFG_TUD_MIDI 0
 #define CFG_TUD_VENDOR 0

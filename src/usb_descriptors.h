@@ -7,7 +7,9 @@ enum
 {
   ITF_NUM_GAMEPAD = 0,
   ITF_NUM_KEYBOARD,
+#ifdef ENABLE_CDC
   ITF_NUM_CDC,
+#endif
   ITF_NUM_TOTAL
 };
 

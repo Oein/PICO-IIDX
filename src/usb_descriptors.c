@@ -115,7 +115,13 @@ uint8_t const *tud_descriptor_device_cb(void)
 #define EPNUM_CDC_IN 0x84
 
 // HID only configuration descriptor
-#define CONFIG_TOTAL_LEN (TUD_CONFIG_DESC_LEN + TUD_HID_DESC_LEN + TUD_HID_DESC_LEN + TUD_CDC_DESC_LEN)
+#ifdef ENABLE_CDC
+#define APD_CDC TUD_CDC_DESC_LEN
+#else
+#define APD_CDC 0
+#endif
+
+#define CONFIG_TOTAL_LEN (TUD_CONFIG_DESC_LEN + TUD_HID_DESC_LEN + TUD_HID_DESC_LEN + APD_CDC)
 uint8_t const desc_configuration[] =
     {
         // Configuration number, interface count, string index, total length, attribute, power in mA
@@ -123,7 +129,9 @@ uint8_t const desc_configuration[] =
 
         TUD_HID_DESCRIPTOR(ITF_NUM_GAMEPAD, 0, HID_ITF_PROTOCOL_NONE, sizeof(desc_hid_report_gamepad), EPNUM_GAMEPAD, CFG_TUD_HID_EP_BUFSIZE, 10),
         TUD_HID_DESCRIPTOR(ITF_NUM_KEYBOARD, 0, HID_ITF_PROTOCOL_KEYBOARD, sizeof(desc_hid_report_keyboard), EPNUM_KEYBOARD, CFG_TUD_HID_EP_BUFSIZE, 10),
+#ifdef ENABLE_CDC
         TUD_CDC_DESCRIPTOR(ITF_NUM_CDC, 4, EPNUM_CDC_NOTIF, 8, EPNUM_CDC_OUT, EPNUM_CDC_IN, 64),
+#endif
 };
 
 // Invoked when received GET CONFIGURATION DESCRIPTOR

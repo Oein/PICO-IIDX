@@ -69,7 +69,10 @@ int changeRange(int reqMin, int reqMax, int inMin, int inMax, int value)
         value = inMin;
     if (value > inMax)
         value = inMax;
-    return (reqMax - reqMin) * (value - inMin) / (inMax - inMin) + reqMin;
+
+    // rounding
+    double result = (double)(value - inMin) * (double)(reqMax - reqMin) / (double)(inMax - inMin) + reqMin;
+    return (int)(result + 0.5);
 }
 
 // 6-Key Rollover implementation
@@ -105,6 +108,7 @@ bool mode_key_pressed = false;
 
 void write_response(const char *response)
 {
+#ifdef ENABLE_CDC
     // // split by 64 bytes
     size_t len = strlen(response);
     size_t offset = 0;
@@ -115,6 +119,7 @@ void write_response(const char *response)
         tud_cdc_write_flush();
         offset += chunk_size;
     }
+#endif
 }
 
 int main()
@@ -139,89 +144,125 @@ int main()
     setup_input_pin(BUTTON9_PIN);
     setup_input_pin(BUTTON10_PIN);
 
-    srand(time(NULL));
-
-    int setted_min = 4096;
-    int setted_max = 0;
+    int setted_min = -1;
+    int setted_max = -1;
     int res_min = 0;
     int res_max = 255;
 
-    const int DEADZONE = 4;
+    double min_speed = 360.0 / 5.0 / 1000.0; // degrees per millisecond (= 100 degrees per second)
+
+    const int sample_count = 32;
+    int last_values[sample_count] = {
+        0,
+    };
+    uint32_t time_values[sample_count] = {
+        0,
+    };
+
+    // Noise filtering variables
+    const int noise_threshold = 5; // Minimum change to consider as real movement
+    int last_stable_read = 0;
+    bool first_read = true;
+
+    // Moving average filter
+    const int filter_size = 8;
+    int adc_readings[filter_size] = {0};
+    int filter_index = 0;
+    int filter_sum = 0;
 
     while (1)
     {
         tud_task();
         hid_task();
 
-        // Read ADC and update gamepad X axis
-        int read = adc_read();
+        // Read ADC with filtering
+        int raw_read = adc_read();
+
+        // Apply moving average filter
+        filter_sum -= adc_readings[filter_index];
+        adc_readings[filter_index] = raw_read;
+        filter_sum += raw_read;
+        filter_index = (filter_index + 1) % filter_size;
+        int filtered_read = filter_sum / filter_size;
+
+        // Apply deadband filter to reduce noise
+        int read;
+        if (first_read)
+        {
+            read = filtered_read;
+            last_stable_read = filtered_read;
+            first_read = false;
+        }
+        else
+        {
+            if (abs(filtered_read - last_stable_read) >= noise_threshold)
+            {
+                read = filtered_read;
+                last_stable_read = filtered_read;
+            }
+            else
+            {
+                read = last_stable_read; // Use last stable value if change is too small
+            }
+        }
+
+        if (setted_min == -1 || setted_max == -1)
+        {
+            setted_min = read;
+            setted_max = read;
+        }
+
         if (read < setted_min)
             setted_min = read;
         if (read > setted_max)
             setted_max = read;
         int mapped_value = changeRange(res_min, res_max, setted_min, setted_max, read);
-        static int prev_mapped_value = -1;
+        int degree_value = changeRange(0, 360, setted_min, setted_max, read);
 
-        if (prev_mapped_value == -1)
-            prev_mapped_value = mapped_value;
-        else
+        int speed = 0;
+        for (int i = sample_count - 1; i > 0; i--)
         {
-            bool isLarge2MinTurnPoint = prev_mapped_value > 255 - DEADZONE && mapped_value < DEADZONE;
-            bool isMin2LargeTurnPoint = prev_mapped_value < DEADZONE && mapped_value > 255 - DEADZONE;
-            static int last_setted_min = read;
-            static int last_setted_max = read;
-            if (isLarge2MinTurnPoint || isMin2LargeTurnPoint)
+            last_values[i] = last_values[i - 1];
+            time_values[i] = time_values[i - 1];
+        }
+        last_values[0] = degree_value;
+        time_values[0] = board_millis();
+        for (int i = 0; i < sample_count - 1; i++)
+        {
+            int diff = (last_values[i] - last_values[i + 1]);
+            // Handle wrap-around
+            if (diff > 180)
             {
-                if (isLarge2MinTurnPoint)
-                {
-                    // 0 값으로 돌아올때 그떄의 최소값을 기준으로 천천히 맞춤
-                    setted_min = (last_setted_min * 9 + read) / 10;
-                }
-                else
-                {
-                    // 255 값으로 돌아올때 그떄의 최대값을 기준으로 천천히 맞춤
-                    setted_max = (last_setted_max * 9 + read) / 10;
-                }
+                diff = 360 - diff;
             }
-            last_setted_min = setted_min;
-            last_setted_max = setted_max;
-
-            if (abs(prev_mapped_value - mapped_value) < DEADZONE)
-                mapped_value = prev_mapped_value;
-            else
-                prev_mapped_value = mapped_value;
+            else if (diff < -180)
+            {
+                diff = -360 - diff;
+            }
+            speed += diff;
         }
 
-        gamepad_report.x = (uint8_t)mapped_value;
+        uint32_t current_time = board_millis();
+        uint32_t delta_time = current_time - time_values[sample_count - 1];
 
-        // write_response("ADC Read: ");
-        // char buffer[16];
-        // snprintf(buffer, sizeof(buffer), "%d", read);
-        // write_response(buffer);
-        // write_response("\r\n");
+        double deg_per_ms = (double)speed / (double)delta_time;
+
+        if (abs(deg_per_ms) >= min_speed)
+        {
+            gamepad_report.x = (uint8_t)mapped_value;
+        }
+        // gamepad_report.x = read & 0xFF;
+        // gamepad_report.y = (read >> 8) & 0xFF;
 
         static int report_counter = 0;
         report_counter++;
-        if (report_counter >= 100)
+        if (report_counter >= 10)
         {
             report_counter = 0;
-            write_response("ADC Min: ");
-            char buffer_min[16];
-            snprintf(buffer_min, sizeof(buffer_min), "%d", setted_min);
-            write_response(buffer_min);
-            write_response(" Max: ");
-            char buffer_max[16];
-            snprintf(buffer_max, sizeof(buffer_max), "%d", setted_max);
-            write_response(buffer_max);
-            write_response(" ADC Read: ");
-            char buffer_read[16];
-            snprintf(buffer_read, sizeof(buffer_read), "%d", read);
-            write_response(buffer_read);
-            write_response(" Mapped: ");
-            char buffer_mapped[16];
-            snprintf(buffer_mapped, sizeof(buffer_mapped), "%d", mapped_value);
-            write_response(buffer_mapped);
-            write_response("\r\n");
+
+            char response[128];
+            snprintf(response, sizeof(response), "D(\t%d,\t%d')\t m(\t%d,\t%d)\t M(%c%2d,\t%c%.3f)\r\n", mapped_value, degree_value, setted_min, setted_max, speed < 0 ? '-' : '+', abs(speed), deg_per_ms < 0 ? '-' : '+', abs(deg_per_ms));
+            write_response(response);
         }
 
         // read buttons
@@ -265,7 +306,7 @@ int main()
         // BUTTON0, BUTTON3, BUTTON5 to switch mode
         bool current_mode_key = gpioRead[7] && gpioRead[10] && gpioRead[1];  // gamepad mode
         bool current_mode_key2 = gpioRead[7] && gpioRead[10] && gpioRead[3]; // keyboard mode
-        bool current_mode_key3 = gpioRead[0] && gpioRead[3] && gpioRead[5];  // calibrate mode
+        bool current_mode_key3 = gpioRead[7] && gpioRead[10] && gpioRead[5]; // calibrate mode
         if ((current_mode_key || current_mode_key2 || current_mode_key3) && !mode_key_pressed)
         {
             if (current_mode_key || current_mode_key2)
@@ -276,11 +317,13 @@ int main()
             {
                 setted_max = read;
                 setted_min = read;
+                memset(last_values, 0, sizeof(last_values));
+                memset(time_values, board_millis(), sizeof(time_values));
             }
 
             mode_key_pressed = true;
         }
-        else if (!current_mode_key && !current_mode_key2)
+        else if (!current_mode_key && !current_mode_key2 && !current_mode_key3)
         {
             mode_key_pressed = false;
         }

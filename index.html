@@ -1,0 +1,950 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>IIDX Gamepad Viewer</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+      body {
+        font-family: "Courier New", monospace;
+        background-color: #1a1a1a;
+        color: #00ff00;
+        margin: 0;
+        padding: 20px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        min-height: 100vh;
+      }
+
+      .container {
+        max-width: 800px;
+        width: 100%;
+      }
+
+      h1 {
+        text-align: center;
+        color: #00ffff;
+        text-shadow: 0 0 10px #00ffff;
+        margin-bottom: 30px;
+      }
+
+      .status {
+        text-align: center;
+        margin-bottom: 20px;
+        padding: 10px;
+        border: 2px solid #333;
+        border-radius: 5px;
+        background-color: #2a2a2a;
+      }
+
+      .gamepad-section {
+        margin-bottom: 30px;
+        padding: 20px;
+        border: 2px solid #444;
+        border-radius: 10px;
+        background-color: #2a2a2a;
+      }
+
+      .section-title {
+        color: #ffff00;
+        font-size: 18px;
+        margin-bottom: 15px;
+        text-align: center;
+      }
+
+      .axis-container {
+        display: flex;
+        justify-content: space-around;
+        margin-bottom: 20px;
+      }
+
+      .axis-display {
+        text-align: center;
+        padding: 15px;
+        border: 2px solid #666;
+        border-radius: 8px;
+        background-color: #333;
+        min-width: 120px;
+      }
+
+      .axis-label {
+        color: #ffaa00;
+        font-size: 14px;
+        margin-bottom: 5px;
+      }
+
+      .axis-value {
+        font-size: 28px;
+        font-weight: bold;
+        color: #00ff00;
+        text-shadow: 0 0 5px #00ff00;
+      }
+
+      .buttons-grid {
+        display: grid;
+        grid-template-columns: repeat(8, 1fr);
+        gap: 10px;
+        margin-top: 20px;
+      }
+
+      .button {
+        aspect-ratio: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border: 2px solid #666;
+        border-radius: 8px;
+        background-color: #333;
+        color: #aaa;
+        font-weight: bold;
+        transition: all 0.1s ease;
+        min-height: 50px;
+      }
+
+      .button.active {
+        background-color: #ff4444;
+        border-color: #ff6666;
+        color: #fff;
+        box-shadow: 0 0 15px #ff4444;
+        transform: scale(1.1);
+      }
+
+      .no-gamepad {
+        color: #ff4444;
+        text-align: center;
+        font-size: 18px;
+        margin: 20px 0;
+      }
+
+      .connected {
+        color: #00ff00;
+      }
+
+      .disconnected {
+        color: #ff4444;
+      }
+
+      .raw-data {
+        margin-top: 20px;
+        padding: 15px;
+        background-color: #1a1a1a;
+        border: 1px solid #444;
+        border-radius: 5px;
+        font-size: 12px;
+        overflow-x: auto;
+      }
+
+      .timestamp {
+        color: #888;
+        font-size: 10px;
+        margin-bottom: 10px;
+      }
+
+      .axis-bar {
+        width: 100%;
+        height: 20px;
+        background-color: #444;
+        border-radius: 10px;
+        margin-top: 8px;
+        position: relative;
+        overflow: hidden;
+      }
+
+      .axis-bar-fill {
+        height: 100%;
+        background: linear-gradient(90deg, #00ff00, #ffff00, #ff4444);
+        border-radius: 10px;
+        transition: width 0.1s ease;
+      }
+
+      .chart-container {
+        margin-top: 20px;
+        padding: 20px;
+        background-color: #1a1a1a;
+        border: 1px solid #444;
+        border-radius: 10px;
+        height: 400px;
+        position: relative;
+      }
+
+      .chart-controls {
+        display: flex;
+        justify-content: center;
+        gap: 10px;
+        margin-bottom: 15px;
+        flex-wrap: wrap;
+      }
+
+      .chart-btn {
+        padding: 8px 16px;
+        background-color: #333;
+        border: 2px solid #666;
+        border-radius: 5px;
+        color: #00ff00;
+        cursor: pointer;
+        font-family: "Courier New", monospace;
+        transition: all 0.2s ease;
+      }
+
+      .chart-btn:hover {
+        background-color: #444;
+        border-color: #00ff00;
+      }
+
+      .chart-btn.active {
+        background-color: #00ff00;
+        color: #000;
+        border-color: #00ff00;
+      }
+
+      .data-table-container {
+        margin-top: 20px;
+        max-height: 400px;
+        overflow-y: auto;
+        border: 2px solid #444;
+        border-radius: 8px;
+        background-color: #1a1a1a;
+      }
+
+      .data-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-family: "Courier New", monospace;
+        font-size: 12px;
+      }
+
+      .data-table th {
+        background-color: #333;
+        color: #00ffff;
+        padding: 8px 12px;
+        border-bottom: 2px solid #666;
+        position: sticky;
+        top: 0;
+        text-align: center;
+        z-index: 10;
+      }
+
+      .data-table td {
+        padding: 6px 12px;
+        border-bottom: 1px solid #333;
+        text-align: center;
+        color: #00ff00;
+      }
+
+      .data-table tr:nth-child(even) {
+        background-color: #252525;
+      }
+
+      .data-table tr:hover {
+        background-color: #444;
+      }
+
+      .table-controls {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 10px;
+        padding: 10px;
+        background-color: #2a2a2a;
+        border-radius: 5px;
+      }
+
+      .table-info {
+        color: #888;
+        font-size: 12px;
+      }
+
+      .export-btn {
+        padding: 6px 12px;
+        background-color: #444;
+        border: 1px solid #666;
+        border-radius: 4px;
+        color: #00ff00;
+        cursor: pointer;
+        font-size: 11px;
+        transition: all 0.2s ease;
+      }
+
+      .export-btn:hover {
+        background-color: #555;
+        border-color: #00ff00;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>🎮 IIDX Gamepad Viewer</h1>
+
+      <div class="status">
+        <div class="timestamp" id="timestamp">Last updated: Never</div>
+        <div id="gamepadStatus">🔍 Checking for gamepad...</div>
+      </div>
+
+      <div id="gamepadContainer" style="display: none">
+        <!-- Original Numbers Display Section -->
+        <div class="gamepad-section">
+          <div class="section-title">🔢 Combined Value (x + y<<8)</div>
+          <div class="axis-container">
+            <div class="axis-display">
+              <div class="axis-label">Combined Read</div>
+              <div class="axis-value" id="combinedValue">0</div>
+            </div>
+            <div class="axis-display">
+              <div class="axis-label">X (Low Byte)</div>
+              <div class="axis-value" id="xByteValue">0</div>
+            </div>
+            <div class="axis-display">
+              <div class="axis-label">Y (High Byte)</div>
+              <div class="axis-value" id="yByteValue">0</div>
+            </div>
+            <div class="axis-display">
+              <div class="axis-label">Hex</div>
+              <div class="axis-value" id="hexValue">0x0000</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Axis Display Section -->
+        <div class="gamepad-section">
+          <div class="section-title">📊 Scaled Axis Values (0-255)</div>
+          <div class="axis-container">
+            <div class="axis-display">
+              <div class="axis-label">X-Axis</div>
+              <div class="axis-value" id="xAxisValue">0</div>
+              <div class="axis-bar">
+                <div class="axis-bar-fill" id="xAxisBar"></div>
+              </div>
+            </div>
+            <div class="axis-display">
+              <div class="axis-label">Y-Axis</div>
+              <div class="axis-value" id="yAxisValue">0</div>
+              <div class="axis-bar">
+                <div class="axis-bar-fill" id="yAxisBar"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Buttons Section -->
+        <div class="gamepad-section">
+          <div class="section-title">🔘 Button States</div>
+          <div class="buttons-grid" id="buttonsGrid">
+            <!-- Buttons will be generated by JavaScript -->
+          </div>
+        </div>
+
+        <!-- Chart Section -->
+        <div class="gamepad-section">
+          <div class="section-title">
+            📈 Combined Value Chart (Latest 1000 samples)
+          </div>
+          <div class="chart-controls">
+            <button class="chart-btn active" onclick="toggleChart('combined')">
+              Combined Value
+            </button>
+            <button class="chart-btn" onclick="toggleChart('x')">
+              X Value
+            </button>
+            <button class="chart-btn" onclick="toggleChart('y')">
+              Y Value
+            </button>
+            <button
+              class="chart-btn"
+              id="recordBtn"
+              onclick="toggleRecording()"
+            >
+              ⏸️ Stop
+            </button>
+            <button class="chart-btn" onclick="clearChart()">
+              Clear Chart
+            </button>
+          </div>
+          <div class="chart-container">
+            <canvas id="valueChart"></canvas>
+          </div>
+        </div>
+
+        <!-- Data Table Section -->
+        <div class="gamepad-section">
+          <div class="section-title">📊 Chart Data Table</div>
+          <div class="table-controls">
+            <div class="table-info">
+              <span id="tableRowCount">0 data points</span> |
+              <span id="tableTimeRange">Time range: 0.0s</span>
+            </div>
+            <button class="export-btn" onclick="exportTableData()">
+              📥 Export CSV
+            </button>
+          </div>
+          <div class="data-table-container">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Time (s)</th>
+                  <th>Combined</th>
+                  <th>X Value</th>
+                  <th>Y Value</th>
+                  <th>Hex</th>
+                </tr>
+              </thead>
+              <tbody id="dataTableBody">
+                <tr>
+                  <td colspan="6">No data recorded yet...</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Raw Data Section -->
+        <div class="gamepad-section">
+          <div class="section-title">📋 Raw Data</div>
+          <div class="raw-data" id="rawData">No data yet...</div>
+        </div>
+      </div>
+
+      <div id="noGamepad" class="no-gamepad">
+        🎮 No gamepad detected. Please connect your IIDX controller and press
+        any button.
+      </div>
+    </div>
+
+    <script>
+      let gamepadIndex = -1;
+      let animationId;
+      let chart;
+      let chartData = [];
+      let maxDataPoints = 5000;
+      let currentChartType = "combined";
+      let startTime = Date.now();
+      let isRecording = true;
+
+      // Initialize Chart.js
+      function initializeChart() {
+        const ctx = document.getElementById("valueChart").getContext("2d");
+
+        Chart.defaults.color = "#00ff00";
+        Chart.defaults.borderColor = "#333";
+
+        chart = new Chart(ctx, {
+          type: "line",
+          data: {
+            labels: [],
+            datasets: [
+              {
+                label: "Combined Value",
+                data: [],
+                borderColor: "#00ff00",
+                backgroundColor: "rgba(0, 255, 0, 0.1)",
+                borderWidth: 2,
+                fill: true,
+                tension: 0.1,
+                pointRadius: 0,
+                pointHoverRadius: 3,
+              },
+            ],
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: {
+              intersect: false,
+              mode: "index",
+            },
+            scales: {
+              x: {
+                type: "linear",
+                position: "bottom",
+                title: {
+                  display: true,
+                  text: "Time (seconds)",
+                  color: "#00ffff",
+                },
+                ticks: {
+                  color: "#888",
+                  callback: function (value) {
+                    return (value / 1000).toFixed(1) + "s";
+                  },
+                },
+                grid: {
+                  color: "#333",
+                },
+              },
+              y: {
+                title: {
+                  display: true,
+                  text: "Value",
+                  color: "#00ffff",
+                },
+                ticks: {
+                  color: "#888",
+                },
+                grid: {
+                  color: "#333",
+                },
+              },
+            },
+            plugins: {
+              legend: {
+                labels: {
+                  color: "#00ff00",
+                },
+              },
+              tooltip: {
+                backgroundColor: "rgba(0, 0, 0, 0.8)",
+                titleColor: "#00ffff",
+                bodyColor: "#00ff00",
+                borderColor: "#00ff00",
+                borderWidth: 1,
+                callbacks: {
+                  title: function (context) {
+                    const dataIndex = context[0].dataIndex;
+                    const chartDataIndex =
+                      chartData.length - 1 - (chartData.length - 1 - dataIndex);
+                    const timeSeconds = (context[0].parsed.x / 1000).toFixed(3);
+                    return `#${chartDataIndex + 1} - Time: ${timeSeconds}s`;
+                  },
+                  label: function (context) {
+                    const value = context.parsed.y;
+                    const dataIndex = context.dataIndex;
+                    const actualIndex = Math.max(
+                      0,
+                      chartData.length - (chartData.length - dataIndex)
+                    );
+
+                    if (actualIndex < chartData.length) {
+                      const point = chartData[actualIndex];
+                      const hex =
+                        "0x" +
+                        point.combined
+                          .toString(16)
+                          .toUpperCase()
+                          .padStart(4, "0");
+
+                      switch (currentChartType) {
+                        case "combined":
+                          return `Combined: ${value} (${hex}) | X: ${point.x} | Y: ${point.y}`;
+                        case "x":
+                          return `X Value: ${value} | Combined: ${point.combined} (${hex})`;
+                        case "y":
+                          return `Y Value: ${value} | Combined: ${point.combined} (${hex})`;
+                        default:
+                          return `${context.dataset.label}: ${value}`;
+                      }
+                    }
+                    return `${context.dataset.label}: ${value}`;
+                  },
+                },
+              },
+            },
+            animation: false,
+            animations: {
+              colors: false,
+              x: false,
+              y: false,
+            },
+            transitions: {
+              active: {
+                animation: {
+                  duration: 0,
+                },
+              },
+            },
+          },
+        });
+      }
+
+      // Add data point to chart
+      function addDataPoint(combinedValue, xValue, yValue) {
+        // Only record if recording is enabled
+        if (!isRecording) return;
+
+        const currentTime = Date.now() - startTime;
+
+        const dataPoint = {
+          time: currentTime,
+          combined: combinedValue,
+          x: xValue,
+          y: yValue,
+        };
+
+        chartData.push(dataPoint);
+
+        // Keep only the latest 1000 points
+        if (chartData.length > maxDataPoints) {
+          chartData.shift();
+        }
+
+        updateChartDisplay();
+        updateDataTable();
+      }
+
+      // Update chart display based on current type
+      function updateChartDisplay() {
+        if (!chart) return;
+
+        const labels = [];
+        const data = [];
+        let label = "";
+        let color = "#00ff00";
+
+        chartData.forEach((point) => {
+          labels.push(point.time);
+          switch (currentChartType) {
+            case "combined":
+              data.push(point.combined);
+              label = "Combined Value (x + y<<8)";
+              color = "#00ff00";
+              break;
+            case "x":
+              data.push(point.x);
+              label = "X Value (Low Byte)";
+              color = "#ffff00";
+              break;
+            case "y":
+              data.push(point.y);
+              label = "Y Value (High Byte)";
+              color = "#ff4444";
+              break;
+          }
+        });
+
+        chart.data.labels = labels;
+        chart.data.datasets[0].data = data;
+        chart.data.datasets[0].label = label;
+        chart.data.datasets[0].borderColor = color;
+        chart.data.datasets[0].backgroundColor = color + "20";
+        chart.update("none");
+      }
+
+      // Update data table
+      function updateDataTable() {
+        const tableBody = document.getElementById("dataTableBody");
+        const rowCountElement = document.getElementById("tableRowCount");
+        const timeRangeElement = document.getElementById("tableTimeRange");
+
+        if (chartData.length === 0) {
+          tableBody.innerHTML =
+            '<tr><td colspan="6">No data recorded yet...</td></tr>';
+          rowCountElement.textContent = "0 data points";
+          timeRangeElement.textContent = "Time range: 0.0s";
+          return;
+        }
+
+        // Update info
+        rowCountElement.textContent = `${chartData.length} data points`;
+        const timeRange =
+          chartData.length > 0
+            ? (chartData[chartData.length - 1].time / 1000).toFixed(1)
+            : "0.0";
+        timeRangeElement.textContent = `Time range: ${timeRange}s`;
+
+        // Build table rows (show latest 100 rows for performance)
+        const maxRows = maxDataPoints;
+        const startIndex = Math.max(0, chartData.length - maxRows);
+        let tableHTML = "";
+
+        for (let i = chartData.length - 1; i >= startIndex; i--) {
+          const point = chartData[i];
+          const rowNum = i + 1;
+          const timeSeconds = (point.time / 1000).toFixed(3);
+          const combined = point.combined;
+          const hex =
+            "0x" + combined.toString(16).toUpperCase().padStart(4, "0");
+
+          tableHTML += `
+            <tr>
+              <td>${rowNum}</td>
+              <td>${timeSeconds}</td>
+              <td>${combined}</td>
+              <td>${point.x}</td>
+              <td>${point.y}</td>
+              <td>${hex}</td>
+            </tr>
+          `;
+        }
+
+        if (chartData.length > maxRows) {
+          tableHTML += `<tr><td colspan="6" style="color: #888; font-style: italic;">... and ${
+            chartData.length - maxRows
+          } more rows (showing latest ${maxRows})</td></tr>`;
+        }
+
+        tableBody.innerHTML = tableHTML;
+      }
+
+      // Export table data as CSV
+      function exportTableData() {
+        if (chartData.length === 0) {
+          alert("No data to export!");
+          return;
+        }
+
+        let csv = "Index,Time (s),Combined Value,X Value,Y Value,Hex Value\n";
+
+        chartData.forEach((point, index) => {
+          const timeSeconds = (point.time / 1000).toFixed(3);
+          const hex =
+            "0x" + point.combined.toString(16).toUpperCase().padStart(4, "0");
+          csv += `${index + 1},${timeSeconds},${point.combined},${point.x},${
+            point.y
+          },${hex}\n`;
+        });
+
+        // Create download link
+        const blob = new Blob([csv], { type: "text/csv" });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `iidx_gamepad_data_${new Date()
+          .toISOString()
+          .slice(0, 19)
+          .replace(/:/g, "-")}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
+      }
+
+      // Toggle chart type
+      function toggleChart(type) {
+        currentChartType = type;
+
+        // Update button states
+        document.querySelectorAll(".chart-btn").forEach((btn) => {
+          btn.classList.remove("active");
+        });
+        event.target.classList.add("active");
+
+        updateChartDisplay();
+      }
+
+      // Clear chart data
+      function clearChart() {
+        chartData = [];
+        startTime = Date.now();
+        updateChartDisplay();
+        updateDataTable();
+      }
+
+      // Toggle recording state
+      function toggleRecording() {
+        isRecording = !isRecording;
+        const recordBtn = document.getElementById("recordBtn");
+
+        if (isRecording) {
+          recordBtn.textContent = "⏸️ Stop";
+          recordBtn.classList.remove("active");
+          // Reset start time when resuming to keep time axis continuous
+          const currentTime = Date.now();
+          const timeOffset =
+            chartData.length > 0 ? chartData[chartData.length - 1].time : 0;
+          startTime = currentTime - timeOffset;
+        } else {
+          recordBtn.textContent = "▶️ Resume";
+          recordBtn.classList.add("active");
+        }
+      }
+
+      // Initialize button grid
+      function initializeButtons() {
+        const buttonsGrid = document.getElementById("buttonsGrid");
+        buttonsGrid.innerHTML = "";
+
+        // Create 16 buttons (2 bytes * 8 bits each)
+        for (let i = 0; i < 16; i++) {
+          const button = document.createElement("div");
+          button.className = "button";
+          button.textContent = i;
+          button.id = `button-${i}`;
+          buttonsGrid.appendChild(button);
+        }
+      }
+
+      // Update axis display
+      function updateAxis(axisValue, elementId, barId) {
+        const valueElement = document.getElementById(elementId);
+        const barElement = document.getElementById(barId);
+
+        valueElement.textContent = axisValue;
+
+        // Update progress bar (0-255 range)
+        const percentage = (axisValue / 255) * 100;
+        barElement.style.width = `${percentage}%`;
+      }
+
+      // Update raw axis values
+      function updateRawAxis(axisValue, elementId) {
+        const valueElement = document.getElementById(elementId);
+        valueElement.textContent = axisValue.toFixed(6);
+      }
+
+      // Update button states
+      function updateButtons(buttons) {
+        // buttons is an array of 2 bytes representing 16 buttons
+        for (let byteIndex = 0; byteIndex < 2; byteIndex++) {
+          const buttonByte = buttons[byteIndex];
+          for (let bit = 0; bit < 8; bit++) {
+            const buttonIndex = byteIndex * 8 + bit;
+            const buttonElement = document.getElementById(
+              `button-${buttonIndex}`
+            );
+            const isPressed = (buttonByte & (1 << bit)) !== 0;
+
+            if (buttonElement) {
+              if (isPressed) {
+                buttonElement.classList.add("active");
+              } else {
+                buttonElement.classList.remove("active");
+              }
+            }
+          }
+        }
+      }
+
+      // Update raw data display
+      function updateRawData(gamepad) {
+        const rawDataElement = document.getElementById("rawData");
+        const axes = gamepad.axes;
+        const buttons = gamepad.buttons;
+
+        let rawText = `Gamepad ID: ${gamepad.id}\n`;
+        rawText += `Mapping: ${gamepad.mapping}\n`;
+        rawText += `Connected: ${gamepad.connected}\n\n`;
+
+        rawText += `Axes (${axes.length}):\n`;
+        axes.forEach((axis, index) => {
+          // Convert from -1 to 1 range to 0-255 range for display
+          const scaledValue = Math.round((axis + 1) * 127.5);
+          rawText += `  Axis ${index}: ${axis.toFixed(
+            6
+          )} (scaled: ${scaledValue})\n`;
+        });
+
+        rawText += `\nButtons (${buttons.length}):\n`;
+        buttons.forEach((button, index) => {
+          rawText += `  Button ${index}: ${
+            button.pressed ? "PRESSED" : "released"
+          } (${button.value.toFixed(3)})\n`;
+        });
+
+        rawDataElement.textContent = rawText;
+      }
+
+      // Update timestamp
+      function updateTimestamp() {
+        const now = new Date();
+        document.getElementById(
+          "timestamp"
+        ).textContent = `Last updated: ${now.toLocaleTimeString()}.${now
+          .getMilliseconds()
+          .toString()
+          .padStart(3, "0")}`;
+      }
+
+      // Main update loop
+      function updateGamepadState() {
+        const gamepads = navigator.getGamepads();
+        let foundGamepad = false;
+
+        // Look for connected gamepad
+        for (let i = 0; i < gamepads.length; i++) {
+          if (gamepads[i] && gamepads[i].connected) {
+            foundGamepad = true;
+            gamepadIndex = i;
+            const gamepad = gamepads[i];
+
+            // Show gamepad container
+            document.getElementById("gamepadContainer").style.display = "block";
+            document.getElementById("noGamepad").style.display = "none";
+            document.getElementById(
+              "gamepadStatus"
+            ).innerHTML = `<span class="connected">🟢 Connected: ${gamepad.id}</span>`;
+
+            // Update scaled axis values (assuming X is axes[0], Y is axes[1])
+            if (gamepad.axes.length >= 2) {
+              // Convert from -1 to 1 range to 0-255 range to match the C code
+              const xValue = Math.round((gamepad.axes[0] + 1) * 127.5);
+              const yValue = Math.round((gamepad.axes[1] + 1) * 127.5);
+
+              // Calculate the combined value: x + (y << 8)
+              const combinedValue = xValue + (yValue << 8);
+
+              // Update individual byte displays
+              document.getElementById("xByteValue").textContent = xValue;
+              document.getElementById("yByteValue").textContent = yValue;
+              document.getElementById("combinedValue").textContent =
+                combinedValue;
+              document.getElementById("hexValue").textContent =
+                "0x" +
+                combinedValue.toString(16).toUpperCase().padStart(4, "0");
+
+              // Add data point to chart
+              addDataPoint(combinedValue, xValue, yValue);
+
+              updateAxis(xValue, "xAxisValue", "xAxisBar");
+              updateAxis(yValue, "yAxisValue", "yAxisBar");
+            }
+
+            // Update button states (simulate the 2-byte button array)
+            const buttonBytes = [0, 0];
+            gamepad.buttons.forEach((button, index) => {
+              if (index < 16 && button.pressed) {
+                const byteIndex = Math.floor(index / 8);
+                const bitIndex = index % 8;
+                buttonBytes[byteIndex] |= 1 << bitIndex;
+              }
+            });
+            updateButtons(buttonBytes);
+
+            // Update raw data
+            updateRawData(gamepad);
+            updateTimestamp();
+
+            break;
+          }
+        }
+
+        if (!foundGamepad) {
+          // Hide gamepad container
+          document.getElementById("gamepadContainer").style.display = "none";
+          document.getElementById("noGamepad").style.display = "block";
+          document.getElementById("gamepadStatus").innerHTML =
+            '<span class="disconnected">🔴 No gamepad detected</span>';
+          gamepadIndex = -1;
+        }
+
+        // Continue the loop
+        animationId = requestAnimationFrame(updateGamepadState);
+      }
+
+      // Event listeners for gamepad connection
+      window.addEventListener("gamepadconnected", function (e) {
+        console.log("Gamepad connected:", e.gamepad);
+        updateGamepadState();
+      });
+
+      window.addEventListener("gamepaddisconnected", function (e) {
+        console.log("Gamepad disconnected:", e.gamepad);
+        updateGamepadState();
+      });
+
+      // Initialize the page
+      document.addEventListener("DOMContentLoaded", function () {
+        initializeButtons();
+        initializeChart();
+        updateGamepadState();
+      });
+
+      // Cleanup on page unload
+      window.addEventListener("beforeunload", function () {
+        if (animationId) {
+          cancelAnimationFrame(animationId);
+        }
+      });
+    </script>
+  </body>
+</html>
