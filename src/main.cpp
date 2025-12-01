@@ -149,9 +149,9 @@ int main()
     int res_min = 0;
     int res_max = 255;
 
-    double min_speed = 360.0 / 5.0 / 1000.0; // degrees per millisecond (= 100 degrees per second)
+    double min_speed = 360.0 / 7.0 / 1000.0; // degrees per millisecond (= 100 degrees per second)
 
-    const int sample_count = 32;
+    const int sample_count = 20;
     int last_values[sample_count] = {
         0,
     };
@@ -160,7 +160,7 @@ int main()
     };
 
     // Noise filtering variables
-    const int noise_threshold = 5; // Minimum change to consider as real movement
+    const int noise_threshold = 4; // Minimum change to consider as real movement
     int last_stable_read = 0;
     bool first_read = true;
 
