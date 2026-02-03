@@ -70,9 +70,9 @@ int changeRange(int reqMin, int reqMax, int inMin, int inMax, int value)
     if (value > inMax)
         value = inMax;
 
-    // rounding
+    // floor
     double result = (double)(value - inMin) * (double)(reqMax - reqMin) / (double)(inMax - inMin) + reqMin;
-    return (int)(result + 0.5);
+    return (int)result;
 }
 
 // 6-Key Rollover implementation
@@ -149,6 +149,8 @@ int main()
     int res_min = 0;
     int res_max = 255;
 
+    const int DEAD_ZONE = 2;
+
     double min_speed = 360.0 / 7.0 / 1000.0; // degrees per millisecond (= 100 degrees per second)
 
     const int sample_count = 20;
@@ -158,17 +160,7 @@ int main()
     uint32_t time_values[sample_count] = {
         0,
     };
-
-    // Noise filtering variables
-    const int noise_threshold = 4; // Minimum change to consider as real movement
-    int last_stable_read = 0;
-    bool first_read = true;
-
-    // Moving average filter
-    const int filter_size = 8;
-    int adc_readings[filter_size] = {0};
-    int filter_index = 0;
-    int filter_sum = 0;
+    uint8_t last_report = 0;
 
     while (1)
     {
@@ -176,35 +168,7 @@ int main()
         hid_task();
 
         // Read ADC with filtering
-        int raw_read = adc_read();
-
-        // Apply moving average filter
-        filter_sum -= adc_readings[filter_index];
-        adc_readings[filter_index] = raw_read;
-        filter_sum += raw_read;
-        filter_index = (filter_index + 1) % filter_size;
-        int filtered_read = filter_sum / filter_size;
-
-        // Apply deadband filter to reduce noise
-        int read;
-        if (first_read)
-        {
-            read = filtered_read;
-            last_stable_read = filtered_read;
-            first_read = false;
-        }
-        else
-        {
-            if (abs(filtered_read - last_stable_read) >= noise_threshold)
-            {
-                read = filtered_read;
-                last_stable_read = filtered_read;
-            }
-            else
-            {
-                read = last_stable_read; // Use last stable value if change is too small
-            }
-        }
+        int read = adc_read();
 
         if (setted_min == -1 || setted_max == -1)
         {
@@ -217,7 +181,11 @@ int main()
         if (read > setted_max)
             setted_max = read;
         int mapped_value = changeRange(res_min, res_max, setted_min, setted_max, read);
+        // gamepad_report.y = mapped_value;
         int degree_value = changeRange(0, 360, setted_min, setted_max, read);
+
+        bool isIncreasing = true;
+        bool isDecreasing = true;
 
         int speed = 0;
         for (int i = sample_count - 1; i > 0; i--)
@@ -227,6 +195,19 @@ int main()
         }
         last_values[0] = degree_value;
         time_values[0] = board_millis();
+
+        for (int i = 0; i < sample_count / 2; i++)
+        {
+            if (last_values[i] < last_values[i + 1])
+            {
+                isIncreasing = false;
+            }
+            if (last_values[i] > last_values[i + 1])
+            {
+                isDecreasing = false;
+            }
+        }
+
         for (int i = 0; i < sample_count - 1; i++)
         {
             int diff = (last_values[i] - last_values[i + 1]);
@@ -247,12 +228,14 @@ int main()
 
         double deg_per_ms = (double)speed / (double)delta_time;
 
-        if (abs(deg_per_ms) >= min_speed)
+        if (abs(deg_per_ms) >= min_speed && (isIncreasing || isDecreasing))
         {
-            gamepad_report.x = (uint8_t)mapped_value;
+            if (abs(last_report - mapped_value) > DEAD_ZONE)
+            {
+                gamepad_report.x = (uint8_t)mapped_value;
+                last_report = mapped_value;
+            }
         }
-        // gamepad_report.x = read & 0xFF;
-        // gamepad_report.y = (read >> 8) & 0xFF;
 
         static int report_counter = 0;
         report_counter++;

@@ -16,8 +16,8 @@ tusb_desc_device_t const desc_device =
         .bDeviceProtocol = 0x00,
         .bMaxPacketSize0 = CFG_TUD_ENDPOINT0_SIZE,
 
-        .idVendor = 0xCafe,
-        .idProduct = 0x4002,
+        .idVendor = 0x0f0d,
+        .idProduct = 0x00c1,
         .bcdDevice = 0x0100,
 
         .iManufacturer = 0x01,
@@ -166,9 +166,9 @@ uint8_t const *tud_hid_descriptor_report_cb(uint8_t instance)
 char const *string_desc_arr[] =
     {
         (const char[]){0x09, 0x04}, // 0: is supported language is English (0x0409)
-        "OeinIndustry",             // 1: Manufacturer
-        "IIDX Controller",          // 2: Product
-        "IIDX-0001",                // 3: Serials
+        "Nintendo Co., Ltd",        // 1: Manufacturer
+        "Pro Controller",           // 2: Product
+        "000000000001",             // 3: Serials
         "CDC",
 };
 

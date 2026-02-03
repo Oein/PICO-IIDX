@@ -643,7 +643,7 @@
         timeRangeElement.textContent = `Time range: ${timeRange}s`;
 
         // Build table rows (show latest 100 rows for performance)
-        const maxRows = maxDataPoints;
+        const maxRows = 100;
         const startIndex = Math.max(0, chartData.length - maxRows);
         let tableHTML = "";
 
